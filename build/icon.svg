@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    LightMD app icon. Source of truth: edit this file, then run `npm run icon`
+    to regenerate build/icon.png and build/icon.icns.
+    Layout follows Apple's macOS grid: 1024 canvas, 824 body at 100 offset.
+  -->
+  <defs>
+    <!-- Morning-sky body -->
+    <linearGradient id="body" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F3F7FF"/>
+      <stop offset="1" stop-color="#E2ECFF"/>
+    </linearGradient>
+    <!-- Sunlight from the top-right corner -->
+    <radialGradient id="sun" cx="0.86" cy="0.12" r="0.62">
+      <stop offset="0" stop-color="#FFE39A" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#FFF0C9" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ray" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF3CF" stop-opacity="0.9"/>
+      <stop offset="0.7" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <!-- Markdown mark ink: indigo to sky. userSpaceOnUse because the arrow's
+         vertical line has a zero-width bounding box, which would leave a
+         bounding-box gradient (and the stroke) empty. -->
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="356" y1="382" x2="678" y2="518">
+      <stop offset="0" stop-color="#5468FF"/>
+      <stop offset="1" stop-color="#1FB6F2"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E6EDFF"/>
+      <stop offset="1" stop-color="#C3D3FF"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFD966"/>
+      <stop offset="1" stop-color="#FFAE34"/>
+    </linearGradient>
+
+    <filter id="bodyShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#1B2A55" flood-opacity="0.18"/>
+    </filter>
+    <filter id="paperShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#3A4F8F" flood-opacity="0.2"/>
+    </filter>
+    <filter id="sparkGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+  </defs>
+
+  <!-- Body -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#body)" filter="url(#bodyShadow)"/>
+
+  <g clip-path="url(#squircle)">
+    <!-- Sunlight and soft rays -->
+    <rect x="100" y="100" width="824" height="824" fill="url(#sun)"/>
+    <g fill="url(#ray)" opacity="0.55">
+      <polygon points="940,80 170,520 230,610"/>
+      <polygon points="940,80 330,900 440,940"/>
+      <polygon points="940,80 640,960 720,960"/>
+    </g>
+
+    <!-- Paper sheet, slightly tilted -->
+    <g transform="rotate(-6 512 532)">
+      <g filter="url(#paperShadow)">
+        <path fill="#FFFFFF" d="M328,262 H642 L732,352 V766 Q732,802 696,802 H328 Q292,802 292,766 V298 Q292,262 328,262 Z"/>
+      </g>
+      <!-- Folded corner -->
+      <path fill="url(#fold)" d="M642,262 V320 Q642,352 674,352 H732 Z"/>
+
+      <!-- Markdown mark: M and down arrow -->
+      <g fill="none" stroke="url(#ink)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="356,518 356,382 450,462 544,382 544,518"/>
+        <line x1="634" y1="382" x2="634" y2="514"/>
+        <polyline points="590,472 634,516 678,472"/>
+      </g>
+
+      <!-- Text lines -->
+      <rect x="356" y="604" width="312" height="24" rx="12" fill="#DCE5F7"/>
+      <rect x="356" y="658" width="250" height="24" rx="12" fill="#E5ECF9"/>
+      <rect x="356" y="712" width="288" height="24" rx="12" fill="#E5ECF9"/>
+    </g>
+  </g>
+
+  <!-- Sparkles: the "light" in LightMD -->
+  <g filter="url(#sparkGlow)">
+    <path fill="url(#spark)" d="M806,170 Q806,236 872,236 Q806,236 806,302 Q806,236 740,236 Q806,236 806,170 Z"/>
+    <path fill="url(#spark)" opacity="0.9" d="M874,318 Q874,344 900,344 Q874,344 874,370 Q874,344 848,344 Q874,344 874,318 Z"/>
+    <path fill="#FFFFFF" d="M806,214 Q806,236 828,236 Q806,236 806,258 Q806,236 784,236 Q806,236 806,214 Z"/>
+  </g>
+
+  <!-- Inner highlight on the body edge -->
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184" fill="none" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="3"/>
+</svg>

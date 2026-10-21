@@ -1,0 +1,42 @@
+{
+  "name": "lightmd",
+  "productName": "LightMD",
+  "version": "0.1.0",
+  "description": "A LightEdit-style single-file Markdown viewer built on Electron",
+  "author": {
+    "name": "Jay Gaha",
+    "email": "jaygaha@gmail.com",
+    "url": "https://jaygaha.com.np"
+  },
+  "homepage": "https://github.com/jaygaha/lightmd#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaygaha/lightmd.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jaygaha/lightmd/issues"
+  },
+  "main": "main.js",
+  "bin": {
+    "lightmd": "bin/lightmd.js"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/**/*.test.js\"",
+    "icon": "electron scripts/build-icon.js",
+    "package": "electron-packager . LightMD --platform=darwin --out=dist --overwrite --app-bundle-id=local.lightmd.viewer --app-category-type=public.app-category.developer-tools --app-copyright=\"© 2026 Jay Gaha\" --extend-info=build/Info.plist --icon=build/icon.icns --ignore=\"^/(test|build|dist|bin|scripts|\\.remember)(/|$)\" --ignore=\"^/(README\\.md|\\.gitignore)$\" && codesign --force --deep --sign - dist/LightMD-darwin-*/LightMD.app"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "github-markdown-css": "5.9.0",
+    "marked": "18.1.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.9.1"
+  }
+}

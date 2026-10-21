@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!--
+    Markdown may contain raw HTML, and marked passes it through. This policy is
+    what stops a <script> or onclick= inside a .md file from running: only
+    scripts and styles shipped with the app load, and nothing can be fetched.
+    Images may come from disk, data: URIs, or https (README badges); video
+    and audio from disk or https.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' file: data: https:; media-src 'self' file: https:; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+  <meta name="color-scheme" content="light dark">
+  <title>LightMD</title>
+  <link rel="stylesheet" href="node_modules/github-markdown-css/github-markdown.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="banner" class="banner" role="status" hidden></div>
+
+  <main id="landing" class="landing">
+    <div class="drop-zone">
+      <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <path d="M14 2v6h6M8 13h2l1 2 1-4 1 2h3"/>
+      </svg>
+      <h1>Drop a Markdown file</h1>
+      <p>or run <code>lightmd path/to/file.md</code></p>
+    </div>
+  </main>
+
+  <article id="document" class="markdown-body" hidden></article>
+
+  <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
