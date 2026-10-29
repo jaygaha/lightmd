@@ -1,34 +1,38 @@
-// UI logic. Runs sandboxed with no Node access: everything outside this page
-// goes through the window.lightmd bridge from preload.js.
+// Page logic. Sandboxed: everything outside goes through window.lightmd (preload.js).
 
 const landing = document.getElementById('landing');
+const workspace = document.getElementById('workspace');
+const sourcePane = document.getElementById('source-pane');
+const previewPane = document.getElementById('preview-pane');
+const divider = document.getElementById('divider');
 const article = document.getElementById('document');
 const banner = document.getElementById('banner');
 const dropOverlay = document.getElementById('drop-overlay');
 
 let currentPath = null;
+let currentSource = '';
+let currentLineCount = 1; // counted like marked and CodeMirror: \r\n, \r or \n
 
 // --- Rendering -------------------------------------------------------------
 
-// marked emits URLs relative to the .md file, but this page lives in the app
-// folder. Rewrite them against the file's folder before anything loads.
+// marked emits URLs relative to the .md file; resolve them before anything loads.
 function resolveUrl(value, baseUrl) {
   if (!value || value.startsWith('#')) return value; // in-page anchor
   try {
     return new URL(value, baseUrl).href;
   } catch {
-    return value; // malformed: leave it be rather than fail the whole render
+    return value; // malformed: keep as is
   }
 }
 
 function resolveRelativeUrls(fragment, baseUrl) {
-  // Covers img/source/video/audio src, a/area href and video poster.
+  // img/source/video/audio src, a/area href, video poster
   for (const attr of ['src', 'href', 'poster']) {
     for (const el of fragment.querySelectorAll(`[${attr}]`)) {
       el.setAttribute(attr, resolveUrl(el.getAttribute(attr), baseUrl));
     }
   }
-  // srcset is a list: "url [descriptor], url [descriptor]", e.g. in <picture>.
+  // srcset: "url descriptor, url descriptor"
   for (const el of fragment.querySelectorAll('[srcset]')) {
     const candidates = el.getAttribute('srcset').split(',').map((candidate) => {
       const [url, ...descriptor] = candidate.trim().split(/\s+/);
@@ -44,8 +48,7 @@ const COPY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.25" y=
 const CHECK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.25 3.25L13 5"/></svg>';
 const copyResetTimers = new WeakMap();
 
-// The <pre> scrolls sideways for wide code, so the button sits on a wrapper
-// around it instead; otherwise it would scroll out of view with the code.
+// On a wrapper, so the button doesn't scroll away with wide code.
 function addCopyButtons(fragment) {
   for (const pre of fragment.querySelectorAll('pre')) {
     const wrapper = document.createElement('div');
@@ -70,12 +73,12 @@ function setCopyState(button, copied) {
   button.setAttribute('aria-label', copied ? 'Copied' : 'Copy code');
 }
 
-// One listener for every button, including ones added by later re-renders.
+// One listener for all buttons, including future ones.
 article.addEventListener('click', async (event) => {
   const button = event.target.closest('.copy-button');
   if (!button) return;
 
-  // marked ends every code block with a newline; leave it out of the copy.
+  // drop marked's trailing newline
   const code = button.parentElement.querySelector('pre').textContent.replace(/\n$/, '');
   try {
     await navigator.clipboard.writeText(code);
@@ -88,11 +91,11 @@ article.addEventListener('click', async (event) => {
   copyResetTimers.set(button, setTimeout(() => setCopyState(button, false), 1500));
 });
 
-window.lightmd.onRender(({ filePath, baseUrl, html }) => {
+window.lightmd.onRender(({ filePath, baseUrl, html, source }) => {
   const sameFile = filePath === currentPath;
-  const scrollY = window.scrollY;
+  const previewScroll = previewPane.scrollTop;
 
-  // A <template> parses HTML without loading images, so URLs are fixed first.
+  // <template> parses without loading images, so URLs are fixed first.
   const template = document.createElement('template');
   template.innerHTML = html;
   resolveRelativeUrls(template.content, baseUrl);
@@ -100,26 +103,32 @@ window.lightmd.onRender(({ filePath, baseUrl, html }) => {
   article.replaceChildren(template.content);
 
   currentPath = filePath;
+  currentSource = source;
+  currentLineCount = source.split(/\r\n|\r|\n/).length;
   hideBanner();
   landing.hidden = true;
-  article.hidden = false;
+  workspace.hidden = false;
 
-  // Live reload of the same file keeps your place; a new file starts at the top.
-  // Images above have no height yet, so this can be clamped at first, but
-  // Chromium's scroll anchoring restores the position as they load. Measured:
-  // a second scrollTo after the images load fights it and lands off target.
-  window.scrollTo(0, sameFile ? scrollY : 0);
+  // Same file keeps its place, a new one starts at the top. Chromium's scroll
+  // anchoring corrects for loading images; a second restore would fight it.
+  previewPane.scrollTop = sameFile ? previewScroll : 0;
+
+  sourceView?.setText(source, { keepScroll: sameFile });
+  blocks = null; // re-measured on the next sync
+  // In split view the preview follows the source, not its old pixel offset.
+  if (sameFile && sourceView) syncPreview(sourceView.topLine());
+  // Keyboard scrolling needs a focused scroller now that the page itself doesn't scroll.
+  if (document.activeElement === document.body) previewPane.focus({ preventScroll: true });
 });
 
 window.lightmd.onError(({ message, waiting }) => {
-  // A watched missing file is "not there yet", not a failure: LightEdit opens
-  // missing files too. main.js only sets `waiting` when it really is watching.
+  // Missing but watched: "not there yet", not a failure (as in LightEdit).
   if (waiting) {
     showBanner('waiting', `${message}. LightMD will show it as soon as it exists.`);
   } else {
     showBanner('error', message);
   }
-  // Whatever was on screen (landing page or last good render) stays visible.
+  // The current view (landing or last render) stays.
 });
 
 function showBanner(kind, text) {
@@ -139,8 +148,7 @@ banner.addEventListener('click', () => {
 
 // --- Drag and drop -----------------------------------------------------------
 
-// dragenter/dragleave fire for every child element crossed, so count depth
-// instead of toggling on each event.
+// dragenter/dragleave fire per child element, so track depth.
 let dragDepth = 0;
 
 function isFileDrag(event) {
@@ -163,7 +171,7 @@ window.addEventListener('dragleave', (event) => {
   if (--dragDepth === 0) setDragging(false);
 });
 
-// Without preventDefault here, Chromium navigates the window to the dropped file.
+// Without this, Chromium navigates to the dropped file.
 window.addEventListener('dragover', (event) => {
   if (isFileDrag(event)) event.preventDefault();
 });
@@ -178,3 +186,141 @@ window.addEventListener('drop', (event) => {
   const filePath = window.lightmd.getPathForFile(file);
   if (filePath) window.lightmd.openFile(filePath);
 });
+
+// --- Split view -----------------------------------------------------------------
+// Like PyCharm: source, split or preview; the preview follows the source.
+
+let sourceView = null; // loaded on first use
+let sourceViewLoading = null;
+let autoScroll = true;
+let blocks = null; // [{ line, top }] for scroll sync; null = measure on next use
+
+// The ~500 KB CodeMirror bundle loads on first use, not at launch.
+function loadSourceView() {
+  sourceViewLoading ??= new Promise((resolve, reject) => {
+    if (window.LightMDSource) return resolve(window.LightMDSource.createSourceView(sourcePane));
+    const script = document.createElement('script');
+    script.src = 'vendor/source-view.js';
+    script.onload = () => {
+      try {
+        resolve(window.LightMDSource.createSourceView(sourcePane));
+      } catch (err) {
+        reject(err); // e.g. a stale bundle: never leave the promise pending
+      }
+    };
+    script.onerror = () => reject(new Error('vendor/source-view.js is missing'));
+    document.head.append(script);
+  }).then((view) => {
+    sourceView = view;
+    view.setText(currentSource, { keepScroll: false });
+    view.onTopLineChange(syncPreview);
+    if (workspace.dataset.mode === 'source') view.focus();
+    syncPreview(view.topLine());
+    return view;
+  });
+  return sourceViewLoading;
+}
+
+function setMode(mode) {
+  workspace.dataset.mode = mode;
+  for (const button of document.querySelectorAll('[data-mode-button]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.modeButton === mode));
+  }
+  if (mode === 'preview') {
+    previewPane.focus({ preventScroll: true });
+  } else if (sourceView) {
+    if (mode === 'source') sourceView.focus();
+    syncPreview(sourceView.topLine()); // line the preview up on entering split
+  } else {
+    loadSourceView().catch((err) => {
+      console.error('lightmd: source view failed to load', err);
+      // Usually the app was replaced while open (its bundle loads lazily), or vendor/ isn't built.
+      showBanner('error', 'The source view could not load. If LightMD was just updated, restart it; otherwise run `npm run build`.');
+      sourceViewLoading = null; // allow a retry
+      setMode('preview');
+    });
+  }
+  reportViewState();
+}
+
+function toggleOrientation() {
+  const vertical = workspace.dataset.orientation === 'vertical';
+  workspace.dataset.orientation = vertical ? 'horizontal' : 'vertical';
+  divider.setAttribute('aria-orientation', vertical ? 'vertical' : 'horizontal');
+  reportViewState();
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoscroll-button').setAttribute('aria-pressed', String(autoScroll));
+  if (autoScroll && sourceView) syncPreview(sourceView.topLine());
+  reportViewState();
+}
+
+// Lets main.js tick the View menu items for the focused window.
+function reportViewState() {
+  const { mode, orientation } = workspace.dataset;
+  window.lightmd.reportViewState({ mode, orientation, autoScroll });
+}
+
+
+// Top-level [data-line] block positions in the preview, plus an end marker.
+function measureBlocks() {
+  const origin = previewPane.getBoundingClientRect().top - previewPane.scrollTop;
+  const measured = [...article.querySelectorAll(':scope > [data-line], :scope > .code-block > [data-line]')].map((el) => ({
+    line: Number(el.dataset.line),
+    top: el.getBoundingClientRect().top - origin,
+  }));
+  const end = { line: currentLineCount + 1, top: article.getBoundingClientRect().bottom - origin };
+  return window.LightMDScrollMap.cleanBlocks(measured, end);
+}
+
+// One way, like PyCharm: the source drives the preview. Measures lazily.
+function syncPreview(line) {
+  if (!autoScroll || workspace.dataset.mode !== 'split') return;
+  blocks ??= measureBlocks();
+  previewPane.scrollTop = window.LightMDScrollMap.offsetForLine(blocks, line);
+}
+
+// Any size change (images loading, divider, mode, orientation) moves the blocks:
+// mark them stale, then re-sync once resizing settles (not on every drag frame).
+let resizeTimer = 0;
+new ResizeObserver(() => {
+  blocks = null;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => sourceView && syncPreview(sourceView.topLine()), 100);
+}).observe(article);
+
+document.querySelector('.view-toolbar').addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  if (button.dataset.modeButton) setMode(button.dataset.modeButton);
+  else if (button.id === 'orientation-button') toggleOrientation();
+  else if (button.id === 'autoscroll-button') toggleAutoScroll();
+});
+
+// View menu commands (main.js).
+window.lightmd.onViewCommand((command) => {
+  if (command.startsWith('mode:')) setMode(command.slice('mode:'.length));
+  else if (command === 'toggle-orientation') toggleOrientation();
+  else if (command === 'toggle-autoscroll') toggleAutoScroll();
+});
+
+// Divider: drag to resize (20–80%), double-click to reset.
+divider.addEventListener('pointerdown', (event) => {
+  divider.setPointerCapture(event.pointerId);
+  workspace.classList.add('resizing');
+});
+
+divider.addEventListener('pointermove', (event) => {
+  if (!divider.hasPointerCapture(event.pointerId)) return;
+  const rect = workspace.getBoundingClientRect();
+  const vertical = workspace.dataset.orientation === 'vertical';
+  const share = vertical ? (event.clientY - rect.top) / rect.height : (event.clientX - rect.left) / rect.width;
+  workspace.style.setProperty('--split', `${Math.min(80, Math.max(20, share * 100))}%`);
+});
+
+divider.addEventListener('lostpointercapture', () => workspace.classList.remove('resizing'));
+divider.addEventListener('dblclick', () => workspace.style.setProperty('--split', '50%'));
+
+setMode('preview');

@@ -1,6 +1,5 @@
-// Render build/icon.svg to build/icon.png (1024 px) and build/icon.icns.
-// Run with `npm run icon`. Uses Electron's own Chromium to rasterize the SVG,
-// then macOS's sips (resize) and iconutil (pack .icns), so no extra packages.
+// build/icon.svg -> icon.png (1024 px) + icon.icns:
+// rasterized by Electron, packed with macOS sips and iconutil. Run: npm run icon
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -12,12 +11,11 @@ const SIZE = 1024;
 const buildDir = path.join(__dirname, '..', 'build');
 const svg = fs.readFileSync(path.join(buildDir, 'icon.svg'), 'utf8');
 
-// Every size macOS looks for in an .icns: [points, scale].
+// [points, scale] for every size in an .icns
 const ICONSET = [16, 32, 128, 256, 512].flatMap((pt) => [[pt, 1], [pt, 2]]);
 
 async function rasterize() {
-  // Offscreen rendering paints at scale 1, so 1024 CSS px = 1024 image px
-  // regardless of the display's Retina factor.
+  // Offscreen renders at scale 1: 1024 CSS px = 1024 px on any display.
   const win = new BrowserWindow({
     width: SIZE,
     height: SIZE,
@@ -42,7 +40,7 @@ async function rasterize() {
 function packIcns(pngPath) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lightmd-icon-'));
   try {
-    const iconset = path.join(tmp, 'icon.iconset'); // iconutil requires this suffix
+    const iconset = path.join(tmp, 'icon.iconset'); // iconutil needs this suffix
     fs.mkdirSync(iconset);
     for (const [pt, scale] of ICONSET) {
       const px = String(pt * scale);
@@ -51,7 +49,7 @@ function packIcns(pngPath) {
     }
     execFileSync('iconutil', ['-c', 'icns', iconset, '-o', path.join(buildDir, 'icon.icns')]);
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true }); // also when sips/iconutil fail
+    fs.rmSync(tmp, { recursive: true, force: true }); // even on failure
   }
 }
 

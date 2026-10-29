@@ -1,38 +1,80 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <!--
-    Markdown may contain raw HTML, and marked passes it through. This policy is
-    what stops a <script> or onclick= inside a .md file from running: only
-    scripts and styles shipped with the app load, and nothing can be fetched.
-    Images may come from disk, data: URIs, or https (README badges); video
-    and audio from disk or https.
-  -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' file: data: https:; media-src 'self' file: https:; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+  <!-- marked passes raw HTML through; this policy stops scripts in a .md file from running.
+       Only app files load; media may also come from disk or https. -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' file: data: https:; media-src 'self' file: https:; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
   <meta name="color-scheme" content="light dark">
   <title>LightMD</title>
   <link rel="stylesheet" href="node_modules/github-markdown-css/github-markdown.css">
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <div id="banner" class="banner" role="status" hidden></div>
 
   <main id="landing" class="landing">
     <div class="drop-zone">
       <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <path d="M14 2v6h6M8 13h2l1 2 1-4 1 2h3"/>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6M8 13h2l1 2 1-4 1 2h3" />
       </svg>
       <h1>Drop a Markdown file</h1>
       <p>or run <code>lightmd path/to/file.md</code></p>
     </div>
   </main>
 
-  <article id="document" class="markdown-body" hidden></article>
+  <!-- Split view: data-mode = source | split | preview, data-orientation = horizontal (side by side) | vertical. -->
+  <div id="workspace" class="workspace" data-mode="preview" data-orientation="horizontal" hidden>
+    <section id="source-pane" class="source-pane" aria-label="Markdown source"></section>
+    <div id="divider" class="divider" role="separator" aria-orientation="vertical"
+      title="Drag to resize, double-click to reset"></div>
+    <section id="preview-pane" class="preview-pane" aria-label="Preview" tabindex="-1">
+      <article id="document" class="markdown-body"></article>
+    </section>
+
+    <div class="view-toolbar" role="toolbar" aria-label="View">
+      <button type="button" data-mode-button="source" title="Source only (⌥⌘1)" aria-label="Source only">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" />
+        </svg>
+      </button>
+      <button type="button" data-mode-button="split" title="Source and preview (⌥⌘2)" aria-label="Source and preview">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+          <path d="M8 2.75v10.5" />
+        </svg>
+      </button>
+      <button type="button" data-mode-button="preview" title="Preview only (⌥⌘3)" aria-label="Preview only">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M1.5 8s2.5-4.75 6.5-4.75S14.5 8 14.5 8 12 12.75 8 12.75 1.5 8 1.5 8Z" />
+          <circle cx="8" cy="8" r="2" />
+        </svg>
+      </button>
+      <span class="toolbar-separator split-only" aria-hidden="true"></span>
+      <button type="button" id="orientation-button" class="split-only" title="Toggle split orientation"
+        aria-label="Toggle split orientation">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+          <path d="M1.75 8h12.5" />
+        </svg>
+      </button>
+      <button type="button" id="autoscroll-button" class="split-only" aria-pressed="true"
+        title="Auto-scroll preview with source" aria-label="Auto-scroll preview">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 1.75v12.5M4.5 10.75 8 14.25l3.5-3.5M4.5 5.25 8 1.75l3.5 3.5" />
+        </svg>
+      </button>
+    </div>
+  </div>
 
   <div id="drop-overlay" class="drop-overlay" hidden>Drop to open</div>
 
+  <script src="lib/scroll-map.js"></script>
   <script src="renderer.js"></script>
 </body>
+
 </html>
