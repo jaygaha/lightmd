@@ -11,12 +11,8 @@ const { watchFile } = require('./lib/watcher');
 const startedAt = Date.now();
 let firstRenderLogged = false;
 
-// One entry per open window:
-//   filePath    the file it shows (null = landing page)
-//   pendingPath a file on its way in, so a second open doesn't claim the same window
-//   watcher     { alive, close } from watchFile
-//   loads       counter, so a slow, older load can't overwrite a newer one
-//   ready       resolves true once index.html has loaded, false if it never will
+// Per window: filePath (null = landing), pendingPath (file being loaded),
+// watcher, loads (drops stale loads), ready (index.html loaded), view (split state).
 const documents = new Map();
 
 function createWindow(filePath) {
@@ -34,8 +30,7 @@ function createWindow(filePath) {
     },
   });
 
-  // IPC messages sent before index.html has loaded are lost; loads await this.
-  // It also settles when the page fails or the window closes, so no load hangs.
+  // Loads await this (IPC before page load is lost); false if the page fails or closes.
   const ready = new Promise((resolve) => {
     win.webContents.once('did-finish-load', () => resolve(true));
     win.webContents.on('did-fail-load', (_e, _code, _desc, _url, isMainFrame) => isMainFrame && resolve(false));
@@ -49,8 +44,7 @@ function createWindow(filePath) {
     documents.delete(win);
   });
 
-  // The window only ever shows index.html. Link clicks (and stray file drops)
-  // would navigate it away, so intercept them and decide here instead.
+  // Keep the window on index.html; links and stray drops go to handleLink.
   win.webContents.on('will-navigate', (event, url) => {
     event.preventDefault();
     handleLink(win, url);
@@ -65,27 +59,24 @@ function createWindow(filePath) {
   return win;
 }
 
-// keepCurrentOnError: for drops and link clicks, a bad target shouldn't replace
-// the document already on screen. CLI launches and reloads do switch, so a
-// missing file still becomes this window's file (and can appear later).
+// keepCurrentOnError (drops, links): a bad target keeps the current document.
+// Launches and reloads switch anyway, so a missing file can appear later.
 async function showFile(win, requestedPath, { keepCurrentOnError = false } = {}) {
   const doc = documents.get(win);
   if (!doc) return; // window already closed
   const filePath = realPath(requestedPath);
   const load = ++doc.loads;
   const result = await loadMarkdownFile(filePath);
-  if (!(await doc.ready) || load !== doc.loads) return; // window gone, or a newer load started
+  if (!(await doc.ready) || load !== doc.loads) return; // window gone or superseded
 
   if (!result.ok && keepCurrentOnError) {
-    // Nothing will watch a refused target, so never promise it will appear.
+    // Not watched, so don't promise it will appear.
     return sendError(win, filePath, result, { waiting: false });
   }
 
-  // (Re)watch when the file changes, or when the old watcher died: the folder
-  // was missing at launch, or was deleted and recreated (e.g. git checkout).
+  // Re-watch on a new file or a dead watcher (folder missing, or recreated by git).
   if (doc.filePath !== filePath || !doc.watcher?.alive) {
     doc.watcher?.close();
-    // Fires on save, atomic replace, delete and (for a missing file) creation.
     doc.watcher = watchFile(filePath, () => showFile(win, filePath));
   }
   doc.filePath = filePath;
@@ -97,11 +88,11 @@ async function showFile(win, requestedPath, { keepCurrentOnError = false } = {})
     return sendError(win, filePath, result, { waiting: result.code === 'ENOENT' && doc.watcher.alive });
   }
   const baseUrl = pathToFileURL(path.dirname(filePath) + path.sep).href;
-  win.webContents.send('document:render', { filePath, baseUrl, html: render(result.content) });
+  win.webContents.send('document:render', { filePath, baseUrl, html: render(result.content), source: result.content });
   logFirstRender();
 }
 
-// waiting: the file is missing but watched, so it will render once it exists.
+// waiting: missing but watched, so it renders once created.
 function sendError(win, filePath, { code, message }, { waiting }) {
   win.webContents.send('document:error', { filePath, code, message, waiting });
 }
@@ -111,7 +102,7 @@ function handleLink(win, url) {
   if (protocol === 'https:' || protocol === 'http:' || protocol === 'mailto:') {
     shell.openExternal(url);
   } else if (protocol === 'file:') {
-    // A relative link to another .md file opens in this window; anything else is ignored.
+    // Relative .md links open here; other file links are ignored.
     const target = fileURLToPath(url);
     if (isMarkdownPath(target)) showFile(win, target, { keepCurrentOnError: true });
   }
@@ -129,18 +120,18 @@ function focusWindow(win) {
   win.focus();
 }
 
-// What a window shows or is about to show; null only for a truly empty window.
+// What a window shows or is loading; null = empty.
 function targetOf(doc) {
   return doc.pendingPath ?? doc.filePath;
 }
 
-// Every way a file arrives ends here: CLI, relaunch, Finder, Dock.
+// Every route ends here: CLI, relaunch, Finder, Dock.
 function openPath(requestedPath) {
   const filePath = realPath(requestedPath);
   for (const [win, doc] of documents) {
     if (targetOf(doc) === filePath) return focusWindow(win);
   }
-  // An empty landing window is reused rather than left behind.
+  // Reuse an empty landing window.
   for (const [win, doc] of documents) {
     if (targetOf(doc) === null) {
       doc.pendingPath = filePath;
@@ -151,11 +142,11 @@ function openPath(requestedPath) {
   createWindow(filePath);
 }
 
-// A launch of this instance, or one forwarded from a second instance.
+// This launch, or one forwarded by a second instance.
 function openRequested(files) {
   if (files.length) return files.forEach(openPath);
 
-  // `lightmd` with no file while windows are open: bring one forward, don't add an empty one.
+  // No file: focus an existing window rather than add an empty one.
   const [existing] = documents.keys();
   existing ? focusWindow(existing) : createWindow(null);
 }
@@ -170,6 +161,35 @@ ipcMain.on('document:open', (event, filePath) => {
   if (win && typeof filePath === 'string') showFile(win, filePath, { keepCurrentOnError: true });
 });
 
+function sendViewCommand(win, command) {
+  win?.webContents.send('view:command', command);
+}
+
+const VIEW_MODES = ['source', 'split', 'preview'];
+
+// Tick the View menu for the focused window's split-view state.
+function updateViewMenu(view) {
+  const menu = Menu.getApplicationMenu();
+  if (!menu || !view) return;
+  menu.getMenuItemById(`mode:${view.mode}`).checked = true;
+  const vertical = menu.getMenuItemById('vertical-split');
+  const autoScroll = menu.getMenuItemById('auto-scroll');
+  vertical.checked = view.orientation === 'vertical';
+  autoScroll.checked = view.autoScroll;
+  vertical.enabled = autoScroll.enabled = view.mode === 'split'; // only matter in split mode
+}
+
+ipcMain.on('view:state', (event, view) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const doc = win && documents.get(win);
+  const valid = VIEW_MODES.includes(view?.mode) && ['horizontal', 'vertical'].includes(view?.orientation) && typeof view?.autoScroll === 'boolean';
+  if (!doc || !valid) return;
+  doc.view = view;
+  if (BrowserWindow.getFocusedWindow() === win) updateViewMenu(view);
+});
+
+app.on('browser-window-focus', (_event, win) => updateViewMenu(documents.get(win)?.view));
+
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   return Menu.buildFromTemplate([
@@ -177,7 +197,7 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
-        // Replaces Electron's default View > Reload, which would reload index.html and blank the document.
+        // Replaces the default View > Reload, which would blank the page.
         { label: 'Reload from Disk', accelerator: 'CmdOrCtrl+R', click: (_item, win) => reloadWindow(win) },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
@@ -187,6 +207,13 @@ function buildMenu() {
     {
       label: 'View',
       submenu: [
+        // Split view (handled in renderer.js).
+        { id: 'mode:source', type: 'radio', label: 'Source Only', accelerator: 'Alt+CmdOrCtrl+1', click: (_item, win) => sendViewCommand(win, 'mode:source') },
+        { id: 'mode:split', type: 'radio', label: 'Source and Preview', accelerator: 'Alt+CmdOrCtrl+2', click: (_item, win) => sendViewCommand(win, 'mode:split') },
+        { id: 'mode:preview', type: 'radio', label: 'Preview Only', accelerator: 'Alt+CmdOrCtrl+3', checked: true, click: (_item, win) => sendViewCommand(win, 'mode:preview') },
+        { id: 'vertical-split', type: 'checkbox', label: 'Vertical Split', enabled: false, click: (_item, win) => sendViewCommand(win, 'toggle-orientation') },
+        { id: 'auto-scroll', type: 'checkbox', label: 'Auto-Scroll Preview', checked: true, enabled: false, click: (_item, win) => sendViewCommand(win, 'toggle-autoscroll') },
+        { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
@@ -199,12 +226,9 @@ function buildMenu() {
   ]);
 }
 
-// Files this launch was asked to open: one from argv, plus any macOS sends as
-// 'open-file' (Finder double-click, "Open With", drop on the Dock icon).
-// argv is parsed here, in the process that received it: only this process
-// knows its own layout (`electron . file.md` in dev vs `LightMD file.md`
-// packaged), and a dev launch can be handed to the packaged app since both
-// share the "LightMD" lock.
+// Files to open: argv plus macOS 'open-file' (Finder, Open With, Dock). 
+// argv is parsed here because only this process knows its layout;
+// dev and packaged builds share the "LightMD" lock, so either may receive the other's files.
 const launchFile = getFileArg(process.argv, { isDefaultApp: Boolean(process.defaultApp), cwd: process.cwd() })?.path ?? null;
 const pendingFiles = launchFile ? [launchFile] : [];
 let isPrimary = false;
@@ -216,15 +240,14 @@ app.on('open-file', (event, filePath) => {
 });
 
 function claimInstance() {
-  // If another LightMD holds the lock, it receives our files and we quit.
+  // Another LightMD holds the lock: it gets our files, we quit.
   isPrimary = app.requestSingleInstanceLock({ files: pendingFiles });
   if (!isPrimary) app.quit();
   return isPrimary;
 }
 
-// With a file on the command line, decide right away. A Finder launch has none
-// in argv: its 'open-file' arrives during startup, before 'ready', so it waits
-// for 'ready' to make sure the file travels with the handoff.
+// Finder launches deliver files via 'open-file' before 'ready',
+// so wait for it before claiming the lock; launches with a CLI file decide immediately.
 const decideEarly = launchFile !== null || process.platform !== 'darwin';
 if (decideEarly) claimInstance();
 
@@ -237,15 +260,15 @@ app.whenReady().then(() => {
   if (!isPrimary) return;
 
   Menu.setApplicationMenu(buildMenu());
-  // App menu > About LightMD. Name, version and icon come from the app itself.
+  // App menu > About LightMD (name, version and icon are automatic).
   app.setAboutPanelOptions({
     copyright: `© 2026 ${author.name}`,
     credits: [`Made by ${author.name}`, author.url.replace(/^https:\/\//, ''), author.email].join('\n'),
   });
-  // The packaged app gets its icon from the bundle; a dev run would show Electron's.
+  // Packaged builds use the bundle icon; dev would show Electron's.
   if (process.platform === 'darwin' && !app.isPackaged) app.dock.setIcon(path.join(__dirname, 'build', 'icon.png'));
   openRequested(pendingFiles.splice(0));
 });
 
-// A file utility, not a dock app: quit with the last window, on macOS too.
+// Quit with the last window, on macOS too: a utility, not a dock app.
 app.on('window-all-closed', () => app.quit());

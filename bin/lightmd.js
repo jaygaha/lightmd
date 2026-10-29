@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Terminal launcher, the LightMD counterpart of PyCharm's bin/ltedit.sh:
-// resolve the file, start Electron in the background, give the prompt back.
+// Terminal launcher (like PyCharm's ltedit.sh): start Electron, return the prompt.
 
 const { spawn } = require('node:child_process');
 const path = require('node:path');
@@ -17,8 +16,7 @@ if (process.argv.includes('-h') || process.argv.includes('--help')) {
   process.exit(0);
 }
 
-// Node's argv has the same shape as `electron .`: [runtime, script, ...args],
-// so isDefaultApp skips the script path just like it skips the app folder.
+// Node's argv looks like `electron .`, so isDefaultApp skips the script path.
 const arg = getFileArg(process.argv, { isDefaultApp: true, cwd: process.cwd() });
 
 if (arg?.error) {
@@ -28,8 +26,7 @@ if (arg?.error) {
 
 const appDir = path.join(__dirname, '..');
 
-// Required from plain Node, the electron package exports the binary's path.
-// It's a devDependency of this folder, so it's missing until `npm install`.
+// Exports the Electron binary path; missing until `npm install`.
 let electron;
 try {
   electron = require('electron');
@@ -38,20 +35,18 @@ try {
   process.exit(1);
 }
 
-// Some terminals (e.g. inside VS Code) export this, which would make Electron
-// behave as plain Node and never open a window.
+// Set by some terminals (e.g. VS Code); it stops Electron opening a window.
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
 const child = spawn(electron, [appDir, ...(arg ? [arg.path] : [])], {
-  detached: true, // own process group: closing the terminal doesn't kill the viewer
-  stdio: 'ignore', // no handles back to this terminal
+  detached: true, // survives the terminal closing
+  stdio: 'ignore', // no ties to this terminal
   env,
 });
-// A failed spawn (binary missing, not executable) is reported on the next
-// tick, before this script exits, so it still reaches the terminal.
+// Spawn errors arrive on the next tick, before exit, so they still print.
 child.on('error', (err) => {
   console.error(`lightmd: could not start Electron (${err.message})`);
   process.exitCode = 1;
 });
-child.unref(); // let this script exit without waiting for Electron
+child.unref(); // don't wait for Electron

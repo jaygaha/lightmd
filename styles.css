@@ -1,5 +1,4 @@
-/* Colors follow github-markdown-css so the frame and the document match.
-   Keep --bg in sync with backgroundColor in main.js to avoid a launch flash. */
+/* Colors match github-markdown-css. Keep --bg in sync with main.js backgroundColor. */
 :root {
   --bg: #ffffff;
   --fg: #1f2328;
@@ -12,6 +11,11 @@
   --waiting-bg: #fff8c5;
   --waiting-fg: #6c4400;
   --success: #1a7f37;
+  /* Source pane syntax colors */
+  --src-heading: #0550ae;
+  --src-link: #0969da;
+  --src-code: #116329;
+  --src-marker: #8c959f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,6 +31,10 @@
     --waiting-bg: #3a2d0a;
     --waiting-fg: #e3b341;
     --success: #3fb950;
+    --src-heading: #79c0ff;
+    --src-link: #4493f8;
+    --src-code: #7ee787;
+    --src-marker: #6e7681;
   }
 }
 
@@ -35,31 +43,160 @@
 
 html, body {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg);
   color: var(--fg);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
 }
 
-/* Column layout: banner on top, landing fills whatever height remains. */
+/* Banner on top, landing or workspace below. Only the panes scroll. */
 body {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
-/* Document view: GitHub's own reading width and padding. */
+/* GitHub's reading width and padding. */
 .markdown-body {
-  width: 100%; /* flex items with auto margins would otherwise shrink to their content */
+  width: 100%; /* auto margins would shrink a flex item to its content */
   max-width: 980px;
   margin: 0 auto;
   padding: 32px 45px 64px;
 }
 
-@media (max-width: 767px) {
+@container preview (max-width: 767px) {
   .markdown-body { padding: 16px; }
 }
 
-/* Copy button on code blocks: appears on hover or keyboard focus, like GitHub's. */
+/* --- Split view ------------------------------------------------------------ */
+
+.workspace {
+  --split: 50%; /* source pane share, set by the divider */
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace[data-orientation="vertical"] { flex-direction: column; }
+
+.source-pane {
+  flex: 0 0 var(--split);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden; /* CodeMirror scrolls inside */
+}
+
+.preview-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  container: preview / inline-size;
+}
+
+.preview-pane:focus { outline: none; } /* focusable only for keyboard scrolling */
+
+/* Where the toolbar would sit over the source, give it a strip of its own. */
+.workspace[data-mode="source"] .source-pane,
+.workspace[data-mode="split"][data-orientation="vertical"] .source-pane {
+  padding-top: 48px;
+}
+
+/* Modes: preview (default), source, or split. */
+.workspace[data-mode="preview"] .source-pane,
+.workspace[data-mode="preview"] .divider,
+.workspace[data-mode="source"] .divider,
+.workspace[data-mode="source"] .preview-pane {
+  display: none;
+}
+
+.workspace[data-mode="source"] .source-pane { flex-basis: 100%; }
+.workspace:not([data-mode="split"]) .split-only { display: none; }
+
+/* 1px line with a wider grab area. */
+.divider {
+  position: relative;
+  flex: 0 0 1px;
+  background: var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+
+.workspace[data-orientation="vertical"] .divider { cursor: row-resize; }
+.workspace[data-orientation="vertical"] .divider::before { inset: -4px 0; }
+
+.workspace.resizing { user-select: none; }
+.workspace.resizing .divider,
+.divider:hover { background: var(--accent); }
+
+/* Floating view toolbar, top right (as in PyCharm). */
+.view-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 22px; /* clears the scrollbar */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg); /* solid, so text doesn't show through */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* Icons dim until hover. */
+.view-toolbar button { opacity: 0.7; transition: opacity 120ms; }
+.view-toolbar:hover button,
+.view-toolbar:focus-within button,
+.view-toolbar button[aria-pressed="true"] { opacity: 1; }
+
+.view-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.view-toolbar button:hover { color: var(--fg); background: var(--accent-soft); }
+.view-toolbar button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+
+.view-toolbar svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border);
+}
+
+/* ```markdown fences, rendered in place: same spacing as any other block. */
+.markdown-block { margin-bottom: 16px; }
+.markdown-block > :last-child { margin-bottom: 0; }
+
+/* Code block copy button, shown on hover or focus. */
 .code-block {
   position: relative;
 }
@@ -153,7 +290,7 @@ body.dragging .drop-zone {
   color: var(--accent);
 }
 
-/* Shown over an open document while a file is dragged across the window. */
+/* Shown over a document while a file is dragged in. */
 .drop-overlay {
   position: fixed;
   inset: 12px;
@@ -172,9 +309,6 @@ body.dragging .drop-zone {
 
 /* Error / waiting banner */
 .banner {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   font-size: 13px;

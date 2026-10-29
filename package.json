@@ -21,10 +21,13 @@
     "lightmd": "bin/lightmd.js"
   },
   "scripts": {
+    "build": "node scripts/build-source-view.js",
+    "postinstall": "node scripts/build-source-view.js --skip-without-esbuild",
+    "prestart": "node scripts/build-source-view.js --if-stale",
     "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
     "icon": "electron scripts/build-icon.js",
-    "package": "electron-packager . LightMD --platform=darwin --out=dist --overwrite --app-bundle-id=local.lightmd.viewer --app-category-type=public.app-category.developer-tools --app-copyright=\"© 2026 Jay Gaha\" --extend-info=build/Info.plist --icon=build/icon.icns --ignore=\"^/(test|build|dist|bin|scripts|\\.remember)(/|$)\" --ignore=\"^/(README\\.md|\\.gitignore)$\" && codesign --force --deep --sign - dist/LightMD-darwin-*/LightMD.app"
+    "package": "npm run build && electron-packager . LightMD --platform=darwin --out=dist --overwrite --app-bundle-id=local.lightmd.viewer --app-category-type=public.app-category.developer-tools --app-copyright=\"© 2026 Jay Gaha\" --extend-info=build/Info.plist --icon=build/icon.icns --ignore=\"^/(test|build|dist|bin|scripts|src|\\.remember)(/|$)\" --ignore=\"^/([Rr][Ee][Aa][Dd][Mm][Ee]\\.[Mm][Dd]|\\.gitignore)$\" && codesign --force --deep --sign - dist/LightMD-darwin-*/LightMD.app"
   },
   "engines": {
     "node": ">=22.12"
@@ -36,7 +39,14 @@
     "marked": "18.1.1"
   },
   "devDependencies": {
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@electron/packager": "20.3.0",
-    "electron": "44.9.1"
+    "@lezer/highlight": "1.2.5",
+    "electron": "44.9.1",
+    "esbuild": "0.28.2"
   }
 }
